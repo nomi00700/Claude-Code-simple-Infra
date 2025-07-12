@@ -1,35 +1,55 @@
-# AWS Infrastructure Project
+# Infrastructure Deployment Guide
 
-This repository contains AWS infrastructure and application code organized in separate branches.
+This branch contains Terraform infrastructure code for AWS deployment.
 
-## Branch Structure
+## Prerequisites
 
-- **`main`** - Main branch with project overview
-- **`devops`** - Infrastructure code (Terraform, AWS resources)
-- **`frontend`** - Application code (Django web application)
+- AWS CLI configured with appropriate credentials
+- Terraform >= 1.0 installed
+- AWS Key Pair created in your target region
 
-## Getting Started
+## Infrastructure Components
 
-### For DevOps Team
+- **VPC** with public and private subnets
+- **EC2 instance** for Django application
+- **Security Groups** with configurable access rules
+- **NAT Gateway** for private subnet internet access
+- **Auto-generated secrets** for Django application
+
+## Quick Deployment
+
+1. **Configure variables:**
+   ```bash
+   cp terraform.tfvars.example terraform.tfvars
+   # Edit terraform.tfvars with your values
+   ```
+
+2. **Deploy infrastructure:**
+   ```bash
+   terraform init
+   terraform plan
+   terraform apply
+   ```
+
+3. **Access application:**
+   ```bash
+   # Get the public IP from outputs
+   terraform output django_url
+   ```
+
+## Security Features
+
+- IP-restricted SSH access
+- Environment-based Django secrets
+- Separate public/private subnets
+- Auto-generated secure passwords
+
+## Configuration Variables
+
+See `terraform.tfvars.example` for all available configuration options.
+
+## Cleanup
+
 ```bash
-git checkout devops
+terraform destroy
 ```
-Contains Terraform infrastructure code for AWS deployment.
-
-### For Frontend Team
-```bash
-git checkout frontend
-```
-Contains Django application code and frontend resources.
-
-## Requirements
-
-- AWS CLI configured
-- Terraform >= 1.0
-- Python 3.8+
-- Valid AWS credentials
-
-## Deployment
-
-Each branch contains specific README instructions for deployment and development.
-EOF < /dev/null
