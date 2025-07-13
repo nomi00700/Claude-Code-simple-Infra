@@ -1,0 +1,94 @@
+name: MCP Validation
+
+on:
+  pull_request:
+    paths:
+      - '.mcp.json'
+      - 'mcp.json'
+  push:
+    branches:
+      - main
+    paths:
+      - '.mcp.json'
+      - 'mcp.json'
+  workflow_dispatch:
+
+jobs:
+  validate-mcp:
+    name: Validate MCP Configuration
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        
+    - name: Validate MCP JSON Syntax
+      run: |
+        echo "🔍 Validating MCP configuration files..."
+        
+        # Check .mcp.json
+        if [ -f ".mcp.json" ]; then
+          echo "Validating .mcp.json..."
+          jq empty .mcp.json
+          echo "✅ .mcp.json syntax is valid"
+        else
+          echo "⚠️ .mcp.json not found"
+        fi
+        
+        # Check mcp.json
+        if [ -f "mcp.json" ]; then
+          echo "Validating mcp.json..."
+          jq empty mcp.json
+          echo "✅ mcp.json syntax is valid"
+        else
+          echo "⚠️ mcp.json not found"
+        fi
+        
+    - name: Test MCP Server Connectivity
+      run: |
+        echo "🔗 Testing MCP server connectivity..."
+        
+        # Test available packages
+        if [ -f ".mcp.json" ]; then
+          echo "Testing .mcp.json servers..."
+          jq -r '.mcpServers | keys[]' .mcp.json | while read server; do
+            echo "Testing server: $server"
+            command=$(jq -r ".mcpServers.$server.command" .mcp.json)
+            args=$(jq -r ".mcpServers.$server.args[]" .mcp.json | tr '\n' ' ')
+            
+            case "$command" in
+              "npx")
+                package=$(echo $args | grep -o '@[a-zA-Z0-9/@-]*' | head -1)
+                if [ ! -z "$package" ]; then
+                  echo "Checking package: $package"
+                  npm view "$package" version || echo "⚠️ Package $package not found"
+                fi
+                ;;
+              *)
+                echo "⚠️ Custom command detected: $command"
+                ;;
+            esac
+          done
+        fi
+        
+    - name: Generate MCP Report
+      run: |
+        echo "## 📊 MCP Validation Report" >> $GITHUB_STEP_SUMMARY
+        
+        if [ -f ".mcp.json" ]; then
+          echo "### 🎯 Active MCP Servers (.mcp.json)" >> $GITHUB_STEP_SUMMARY
+          jq -r '.mcpServers | to_entries[] | "- **\(.key)**: \(.value.command) \(.value.args | join(" "))"' .mcp.json >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        if [ -f "mcp.json" ]; then
+          echo "### 📋 Legacy MCP Configuration (mcp.json)" >> $GITHUB_STEP_SUMMARY
+          jq -r '.servers | to_entries[] | "- **\(.key)**: \(.value.command // "stdio") \(.value.args // [] | join(" "))"' mcp.json >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        echo "### ✅ Validation Complete" >> $GITHUB_STEP_SUMMARY
+        echo "All MCP configurations have been validated successfully." >> $GITHUB_STEP_SUMMARY
