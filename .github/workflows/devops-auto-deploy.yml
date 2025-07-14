@@ -1,0 +1,107 @@
+name: DevOps Auto-Deploy
+
+on:
+  push:
+    branches:
+      - devops
+    paths:
+      - '*.tf'
+      - 'user_data.sh'
+      - 'terraform.tfvars.example'
+
+env:
+  TF_VERSION: "1.9.8"
+  WORKING_DIR: .
+
+jobs:
+  auto-deploy:
+    name: Auto-Deploy Infrastructure
+    runs-on: ubuntu-latest
+    environment: development
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: ${{ env.TF_VERSION }}
+        
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+        
+    - name: Terraform Format Check
+      working-directory: ${{ env.WORKING_DIR }}
+      run: terraform fmt -check
+      continue-on-error: true
+      
+    - name: Terraform Init
+      working-directory: ${{ env.WORKING_DIR }}
+      run: terraform init
+      
+    - name: Terraform Validate
+      working-directory: ${{ env.WORKING_DIR }}
+      run: terraform validate
+      
+    - name: Terraform Plan
+      working-directory: ${{ env.WORKING_DIR }}
+      id: plan
+      run: |
+        terraform plan -no-color -out=tfplan
+        terraform show -no-color tfplan > plan.txt
+        
+    - name: Display Plan Summary
+      working-directory: ${{ env.WORKING_DIR }}
+      run: |
+        echo "## 🏗️ Terraform Plan Summary" >> $GITHUB_STEP_SUMMARY
+        echo "### Infrastructure Changes:" >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        head -50 plan.txt >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        
+    - name: Terraform Apply
+      working-directory: ${{ env.WORKING_DIR }}
+      run: |
+        echo "🚀 Applying infrastructure changes..."
+        terraform apply -auto-approve tfplan
+        
+    - name: Get Infrastructure Outputs
+      working-directory: ${{ env.WORKING_DIR }}
+      id: outputs
+      run: |
+        echo "## 🎉 Infrastructure Deployed Successfully" >> $GITHUB_STEP_SUMMARY
+        echo "### Deployment Details:" >> $GITHUB_STEP_SUMMARY
+        echo "- **Deployment Time**: $(date)" >> $GITHUB_STEP_SUMMARY
+        echo "- **Branch**: devops" >> $GITHUB_STEP_SUMMARY
+        echo "- **Terraform Version**: ${{ env.TF_VERSION }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Infrastructure Outputs:" >> $GITHUB_STEP_SUMMARY
+        terraform output -json | jq -r 'to_entries[] | "- **\(.key)**: \(.value.value)"' >> $GITHUB_STEP_SUMMARY
+        
+    - name: Save Deployment Info
+      working-directory: ${{ env.WORKING_DIR }}
+      run: |
+        echo "=== DEPLOYMENT SUCCESS ===" 
+        echo "Django URL: $(terraform output -raw django_url 2>/dev/null || echo 'Not available')"
+        echo "EC2 Public IP: $(terraform output -raw ec2_public_ip 2>/dev/null || echo 'Not available')"
+        echo "VPC ID: $(terraform output -raw vpc_id 2>/dev/null || echo 'Not available')"
+        
+    - name: Cleanup on Failure
+      if: failure()
+      working-directory: ${{ env.WORKING_DIR }}
+      run: |
+        echo "## ❌ Deployment Failed" >> $GITHUB_STEP_SUMMARY
+        echo "### Error Details:" >> $GITHUB_STEP_SUMMARY
+        echo "- **Time**: $(date)" >> $GITHUB_STEP_SUMMARY
+        echo "- **Branch**: devops" >> $GITHUB_STEP_SUMMARY
+        echo "- **Action**: Check logs above for detailed error information" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Next Steps:" >> $GITHUB_STEP_SUMMARY
+        echo "1. Review the error logs above" >> $GITHUB_STEP_SUMMARY
+        echo "2. Fix the terraform configuration" >> $GITHUB_STEP_SUMMARY
+        echo "3. Commit and push to trigger deployment again" >> $GITHUB_STEP_SUMMARY
