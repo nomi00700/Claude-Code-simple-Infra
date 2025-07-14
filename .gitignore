@@ -5,8 +5,14 @@
 *.tfvars
 .terraform.lock.hcl
 
+# SSH Keys (Security)
+*.pem
+*.key
+id_rsa*
+
 # Environment variables
 .env
+.env.*
 
 # IDE
 .vscode/
@@ -18,3 +24,11 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# MCP Config (should be in project root)
+.mcp.json
