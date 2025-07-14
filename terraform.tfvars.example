@@ -1,0 +1,30 @@
+# Copy this file to terraform.tfvars and update with your values
+
+# AWS Configuration
+aws_region = "us-east-1"
+key_name   = "your-key-pair-name"
+
+# Security Configuration (IMPORTANT: Update with your IP addresses)
+admin_cidr_blocks = ["your.ip.address.here/32"]  # Replace with your IP for SSH access
+web_cidr_blocks   = ["0.0.0.0/0"]               # Web access (can be restricted)
+
+# Django Application Security
+django_secret_key    = "your-super-secret-django-key-here"
+django_allowed_hosts = "your-domain.com,your-ec2-ip"
+
+# Project Configuration
+project_name = "noumantest"
+environment  = "dev"
+
+# Optional: Override default network values
+# vpc_cidr            = "10.0.0.0/16"
+# public_subnet_cidr  = "10.0.1.0/24"
+# private_subnet_cidr = "10.0.2.0/24"
+# instance_type       = "t2.micro"
+
+# Optional: Additional tags
+# common_tags = {
+#   Owner       = "your-name"
+#   CostCenter  = "development"
+#   Department  = "engineering"
+# }

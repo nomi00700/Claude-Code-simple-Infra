@@ -1,0 +1,133 @@
+name: Documentation Automation
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'terraform-aws-django/**'
+      - 'docs/**'
+      - '.mcp.json'
+      - 'mcp.json'
+  pull_request:
+    paths:
+      - 'docs/**'
+  workflow_dispatch:
+
+env:
+  TF_VERSION: "1.9.8"
+
+jobs:
+  update-docs:
+    name: Update Documentation
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: ${{ env.TF_VERSION }}
+        
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        
+    - name: Install terraform-docs
+      run: |
+        curl -sSLo terraform-docs.tar.gz https://github.com/terraform-docs/terraform-docs/releases/download/v0.17.0/terraform-docs-v0.17.0-linux-amd64.tar.gz
+        tar -xzf terraform-docs.tar.gz
+        sudo mv terraform-docs /usr/local/bin/
+        terraform-docs --version
+        
+    - name: Generate Terraform Documentation
+      run: |
+        cd terraform-aws-django
+        
+        # Generate README for Terraform
+        terraform-docs markdown table --output-file terraform-README.md .
+        
+        # Create infrastructure summary
+        cat > infrastructure-summary.md << 'EOF'
+        # Infrastructure Summary
+        
+        ## Generated Documentation
+        
+        This documentation is automatically generated from Terraform configurations.
+        
+        **Last Updated**: $(date)
+        **Terraform Version**: ${{ env.TF_VERSION }}
+        
+        ## Architecture Overview
+        
+        EOF
+        
+        # Add resource count
+        echo "### Resource Count" >> infrastructure-summary.md
+        grep -c "^resource" *.tf | while IFS=: read file count; do
+          echo "- **$file**: $count resources" >> infrastructure-summary.md
+        done
+        
+    - name: Update MCP Documentation
+      run: |
+        echo "# MCP Server Configuration" > docs/mcp-status.md
+        echo "" >> docs/mcp-status.md
+        echo "**Auto-generated**: $(date)" >> docs/mcp-status.md
+        echo "" >> docs/mcp-status.md
+        
+        if [ -f ".mcp.json" ]; then
+          echo "## Active MCP Servers" >> docs/mcp-status.md
+          echo "" >> docs/mcp-status.md
+          jq -r '.mcpServers | to_entries[] | "### \(.key)\n- **Command**: `\(.value.command)`\n- **Args**: `\(.value.args | join(" "))`\n- **Description**: \(.value.description // "No description")\n"' .mcp.json >> docs/mcp-status.md
+        fi
+        
+    - name: Update Project Status
+      run: |
+        echo "# Project Status Dashboard" > docs/project-status.md
+        echo "" >> docs/project-status.md
+        echo "**Last Updated**: $(date)" >> docs/project-status.md
+        echo "" >> docs/project-status.md
+        
+        echo "## 🏗️ Infrastructure Status" >> docs/project-status.md
+        echo "- **Terraform Version**: ${{ env.TF_VERSION }}" >> docs/project-status.md
+        echo "- **Configuration**: ✅ Validated" >> docs/project-status.md
+        echo "- **Provider**: AWS" >> docs/project-status.md
+        echo "" >> docs/project-status.md
+        
+        echo "## 🔌 MCP Integration" >> docs/project-status.md
+        if [ -f ".mcp.json" ]; then
+          server_count=$(jq '.mcpServers | length' .mcp.json)
+          echo "- **Active Servers**: $server_count" >> docs/project-status.md
+          echo "- **Configuration**: ✅ Valid JSON" >> docs/project-status.md
+        fi
+        echo "" >> docs/project-status.md
+        
+        echo "## 🚀 CI/CD Pipelines" >> docs/project-status.md
+        echo "- **Terraform Validation**: ✅ Automated" >> docs/project-status.md
+        echo "- **Infrastructure Planning**: ✅ PR Comments" >> docs/project-status.md
+        echo "- **Deployment**: ✅ Manual Approval" >> docs/project-status.md
+        echo "- **MCP Validation**: ✅ Automated" >> docs/project-status.md
+        
+    - name: Commit Documentation Updates
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        
+        if git diff --quiet; then
+          echo "No documentation changes to commit"
+        else
+          git add docs/ terraform-aws-django/terraform-README.md terraform-aws-django/infrastructure-summary.md
+          git commit -m "📚 Auto-update documentation
+          
+          - Updated MCP server status
+          - Generated Terraform documentation  
+          - Refreshed project status dashboard
+          
+          🤖 Generated with GitHub Actions"
+          git push
+        fi

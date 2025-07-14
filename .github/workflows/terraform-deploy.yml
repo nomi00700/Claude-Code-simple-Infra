@@ -1,0 +1,108 @@
+name: Terraform Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+      action:
+        description: 'Action to perform'
+        required: true
+        default: 'apply'
+        type: choice
+        options:
+          - apply
+          - destroy
+      auto_approve:
+        description: 'Auto approve (use with caution)'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  TF_VERSION: "1.9.8"
+  WORKING_DIR: terraform-aws-django
+
+jobs:
+  deploy:
+    name: Terraform ${{ github.event.inputs.action }}
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: ${{ env.TF_VERSION }}
+        
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+        
+    - name: Terraform Init
+      working-directory: ${{ env.WORKING_DIR }}
+      run: terraform init
+      
+    - name: Download Plan Artifact (for apply)
+      if: github.event.inputs.action == 'apply'
+      uses: actions/download-artifact@v4
+      with:
+        name: terraform-plan
+        path: ${{ env.WORKING_DIR }}
+      continue-on-error: true
+      
+    - name: Terraform Apply
+      if: github.event.inputs.action == 'apply'
+      working-directory: ${{ env.WORKING_DIR }}
+      run: |
+        if [ -f "tfplan" ]; then
+          echo "Applying saved plan..."
+          terraform apply tfplan
+        else
+          echo "No saved plan found, creating new plan..."
+          if [ "${{ github.event.inputs.auto_approve }}" == "true" ]; then
+            terraform apply -auto-approve
+          else
+            terraform plan -out=tfplan
+            terraform apply tfplan
+          fi
+        fi
+        
+    - name: Terraform Destroy
+      if: github.event.inputs.action == 'destroy'
+      working-directory: ${{ env.WORKING_DIR }}
+      run: |
+        if [ "${{ github.event.inputs.auto_approve }}" == "true" ]; then
+          terraform destroy -auto-approve
+        else
+          terraform plan -destroy -out=tfplan-destroy
+          terraform apply tfplan-destroy
+        fi
+        
+    - name: Output Infrastructure Details
+      if: github.event.inputs.action == 'apply'
+      working-directory: ${{ env.WORKING_DIR }}
+      run: |
+        echo "## 🚀 Infrastructure Deployed Successfully" >> $GITHUB_STEP_SUMMARY
+        echo "### Outputs:" >> $GITHUB_STEP_SUMMARY
+        terraform output -json | jq -r 'to_entries[] | "- **\(.key)**: \(.value.value)"' >> $GITHUB_STEP_SUMMARY
+        
+    - name: Cleanup on Failure
+      if: failure()
+      working-directory: ${{ env.WORKING_DIR }}
+      run: |
+        echo "## ❌ Deployment Failed" >> $GITHUB_STEP_SUMMARY
+        echo "Check the logs above for details." >> $GITHUB_STEP_SUMMARY
