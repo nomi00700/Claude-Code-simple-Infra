@@ -1,4 +1,4 @@
-# DevOps Auto-Deploy Pipeline Test
+# DevOps Auto-Deploy Pipeline - Professional Repository Separation
 terraform {
   required_version = ">= 1.0"
   required_providers {
